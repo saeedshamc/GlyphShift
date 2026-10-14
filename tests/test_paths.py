@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.conftest import file_sha256
+
 from glyphshift.core.converter import convert_file
 from glyphshift.core.formats import Format, detect_format
 from glyphshift.core.info import inspect_font
 from glyphshift.core.models import ConversionOptions
-from tests.conftest import file_sha256
 
 
 def test_persian_filename_roundtrip(persian_named: Path, tmp_out: Path) -> None:

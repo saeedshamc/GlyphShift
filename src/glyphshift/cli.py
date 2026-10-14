@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import click
 
 from glyphshift import __version__
-from glyphshift.core.converter import convert_file, convert_many
+from glyphshift.core.converter import convert_file
 from glyphshift.core.errors import GlyphShiftError
 from glyphshift.core.formats import Format, conversion_is_lossless, detect_format
 from glyphshift.core.info import inspect_font
@@ -29,10 +31,8 @@ FONT_GLOBS = ("*.ttf", "*.otf", "*.woff", "*.woff2", "*.ttc", "*.otc")
 def _configure_stdio() -> None:
     """Best-effort UTF-8 stdout/stderr on Windows consoles."""
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(Exception):
             stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _setup_logging(verbose: int, quiet: bool) -> None:
@@ -134,9 +134,17 @@ def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
     type=click.Choice(["ttf", "otf", "woff", "woff2"], case_sensitive=False),
     help="Target format.",
 )
-@click.option("--out", "out_dir", type=click.Path(path_type=Path), default=None, help="Output directory.")
+@click.option(
+    "--out", "out_dir", type=click.Path(path_type=Path), default=None, help="Output directory."
+)
 @click.option("--overwrite", is_flag=True, help="Overwrite existing outputs.")
-@click.option("--max-err", type=float, default=1.0, show_default=True, help="CFF->TTF approximation tolerance.")
+@click.option(
+    "--max-err",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="CFF->TTF approximation tolerance.",
+)
 @click.option("--no-verify", is_flag=True, help="Skip post-conversion verification.")
 @click.option("--keep-on-fail", is_flag=True, help="Keep output even if verification fails.")
 @click.option("--index", "ttc_index", type=int, default=None, help="TTC/OTC face index.")
@@ -163,7 +171,7 @@ def convert_cmd(
         files = _collect_inputs(inputs, recursive=recursive)
     except click.ClickException:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise click.ClickException(str(exc)) from exc
 
     if not files:
@@ -201,17 +209,11 @@ def convert_cmd(
             if not result.success and result.verify_report and not result.verify_report.passed:
                 verify_failures += 1
     else:
-        with click.progressbar(
-            files, label="convert", show_pos=True, file=sys.stderr
-        ) as bar:
+        with click.progressbar(files, label="convert", show_pos=True, file=sys.stderr) as bar:
             for path in bar:
                 result = _run_one(path)
                 results.append(result)
-                if (
-                    not result.success
-                    and result.verify_report
-                    and not result.verify_report.passed
-                ):
+                if not result.success and result.verify_report and not result.verify_report.passed:
                     verify_failures += 1
                 _print_result(result, as_json=False)
 
@@ -304,7 +306,9 @@ def verify_cmd(
     if as_json:
         click.echo(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
     else:
-        status = click.style("PASSED", fg="green") if report.passed else click.style("FAILED", fg="red")
+        status = (
+            click.style("PASSED", fg="green") if report.passed else click.style("FAILED", fg="red")
+        )
         click.echo(f"Verification {status} ({mode.value})")
         for iss in report.issues:
             color = {"error": "red", "warning": "yellow", "info": "cyan"}[iss.severity.value]

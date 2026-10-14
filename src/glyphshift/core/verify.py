@@ -118,7 +118,7 @@ def _glyph_outline_record(font: TTFont, name: str) -> list[Any] | None:
     pen = RecordingPen()
     try:
         glyph_set[name].draw(pen)
-    except Exception:  # noqa: BLE001 — some glyphs may be empty / broken
+    except Exception:
         return None
     return pen.value
 
@@ -132,12 +132,7 @@ def _bbox_of_record(record: list[Any] | None) -> tuple[float, float, float, floa
         if op in ("moveTo", "lineTo"):
             xs.append(args[0][0])
             ys.append(args[0][1])
-        elif op == "qCurveTo":
-            for pt in args:
-                if isinstance(pt, tuple):
-                    xs.append(pt[0])
-                    ys.append(pt[1])
-        elif op == "curveTo":
+        elif op == "qCurveTo" or op == "curveTo":
             for pt in args:
                 if isinstance(pt, tuple):
                     xs.append(pt[0])
@@ -205,7 +200,7 @@ def verify(
 
     try:
         src_font = _open(src_path)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return VerifyReport(
             passed=False,
             mode=mode,
@@ -213,7 +208,7 @@ def verify(
         )
     try:
         dst_font = _open(dst_path)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         src_font.close()
         return VerifyReport(
             passed=False,
@@ -301,8 +296,7 @@ def verify(
                         _issue(
                             Severity.ERROR,
                             "critical_cp_glyph",
-                            f"U+{cp:04X} maps to '{src_name}' in source but "
-                            f"'{dst_name}' in output",
+                            f"U+{cp:04X} maps to '{src_name}' in source but '{dst_name}' in output",
                         )
                     )
 
@@ -325,8 +319,9 @@ def verify(
                 )
 
         # --- 3. Table presence ---
-        src_tags = {t for t in src_font.keys() if not t.startswith("GlyphOrder")}
-        dst_tags = {t for t in dst_font.keys() if not t.startswith("GlyphOrder")}
+        # Must use .keys() — iterating TTFont indexes tables by ordinal and breaks.
+        src_tags = {t for t in src_font.keys() if not t.startswith("GlyphOrder")}  # noqa: SIM118
+        dst_tags = {t for t in dst_font.keys() if not t.startswith("GlyphOrder")}  # noqa: SIM118
         expected_removed: set[str] = set()
         expected_added: set[str] = set()
         if outline_converted:
@@ -359,16 +354,18 @@ def verify(
         details["tables_dst"] = sorted(dst_tags)
 
         # --- 4. Metrics ---
-        if "head" in src_font and "head" in dst_font:
-            if src_font["head"].unitsPerEm != dst_font["head"].unitsPerEm:
-                issues.append(
-                    _issue(
-                        Severity.ERROR,
-                        "units_per_em",
-                        f"unitsPerEm {src_font['head'].unitsPerEm} -> "
-                        f"{dst_font['head'].unitsPerEm}",
-                    )
+        if (
+            "head" in src_font
+            and "head" in dst_font
+            and src_font["head"].unitsPerEm != dst_font["head"].unitsPerEm
+        ):
+            issues.append(
+                _issue(
+                    Severity.ERROR,
+                    "units_per_em",
+                    f"unitsPerEm {src_font['head'].unitsPerEm} -> {dst_font['head'].unitsPerEm}",
                 )
+            )
 
         if "hmtx" in src_font and "hmtx" in dst_font:
             src_h = src_font["hmtx"].metrics
@@ -376,9 +373,7 @@ def verify(
             if outline_converted:
                 # Advance widths must match; LSB often changes with new bounds.
                 width_diffs = [
-                    g
-                    for g in src_order
-                    if g in src_h and g in dst_h and src_h[g][0] != dst_h[g][0]
+                    g for g in src_order if g in src_h and g in dst_h and src_h[g][0] != dst_h[g][0]
                 ]
                 if width_diffs:
                     issues.append(
@@ -391,17 +386,14 @@ def verify(
                     )
             else:
                 hmtx_diffs = [
-                    g
-                    for g in src_order
-                    if g in src_h and g in dst_h and src_h[g] != dst_h[g]
+                    g for g in src_order if g in src_h and g in dst_h and src_h[g] != dst_h[g]
                 ]
                 if hmtx_diffs:
                     issues.append(
                         _issue(
                             Severity.ERROR,
                             "hmtx",
-                            f"hmtx differs for {len(hmtx_diffs)} glyph(s) "
-                            f"(e.g. {hmtx_diffs[:5]})",
+                            f"hmtx differs for {len(hmtx_diffs)} glyph(s) (e.g. {hmtx_diffs[:5]})",
                         )
                     )
 
@@ -451,14 +443,12 @@ def verify(
             if tag not in src_font:
                 continue
             if tag not in dst_font:
-                issues.append(
-                    _issue(Severity.ERROR, f"layout_missing_{tag}", f"{tag} table lost")
-                )
+                issues.append(_issue(Severity.ERROR, f"layout_missing_{tag}", f"{tag} table lost"))
                 continue
             try:
                 sx = _table_xml(src_font, tag)
                 dx = _table_xml(dst_font, tag)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 issues.append(
                     _issue(
                         Severity.WARNING,
@@ -503,10 +493,8 @@ def verify(
         if "name" in src_font and "name" in dst_font:
             try:
                 if _table_xml(src_font, "name") != _table_xml(dst_font, "name"):
-                    issues.append(
-                        _issue(Severity.ERROR, "name_table", "name table records differ")
-                    )
-            except Exception as exc:  # noqa: BLE001
+                    issues.append(_issue(Severity.ERROR, "name_table", "name table records differ"))
+            except Exception as exc:
                 issues.append(
                     _issue(Severity.WARNING, "name_compare", f"name compare failed: {exc}")
                 )
@@ -596,9 +584,7 @@ def verify(
                 }:
                     demoted.append(iss)  # keep as-is (must not change)
                 elif iss.severity == Severity.ERROR and iss.code.startswith("tables_"):
-                    demoted.append(
-                        Issue(Severity.WARNING, iss.code, iss.message)
-                    )
+                    demoted.append(Issue(Severity.WARNING, iss.code, iss.message))
                 else:
                     demoted.append(iss)
             issues = demoted

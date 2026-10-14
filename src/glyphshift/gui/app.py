@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import platform
@@ -55,7 +56,7 @@ def _setup_file_logging() -> Path:
         from platformdirs import user_log_dir
 
         log_dir = Path(user_log_dir("GlyphShift", "GlyphShift"))
-    except Exception:  # noqa: BLE001
+    except Exception:
         log_dir = Path.home() / ".glyphshift" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "glyphshift-gui.log"
@@ -82,7 +83,7 @@ def open_in_file_manager(path: Path) -> None:
             subprocess.run(["open", str(target)], check=False)
         else:
             subprocess.run(["xdg-open", str(target)], check=False)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Failed to open folder %s", target)
 
 
@@ -283,7 +284,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("reverse_direction", self.reverse_dir.isChecked())
         self.settings.setValue("language", self.lang_combo.currentData())
 
-    def closeEvent(self, event) -> None:  # noqa: ANN001, N802
+    def closeEvent(self, event) -> None:
         self._save_settings()
         super().closeEvent(event)
 
@@ -328,15 +329,13 @@ class MainWindow(QMainWindow):
                 lossless = False
             if target == Format.OTF and det.outline == OutlineType.GLYF:
                 lossless = False
-        except Exception:  # noqa: BLE001
+        except Exception:
             lossless = True
         if lossless:
             self.lossless_label.setText(self.strings.lossless)
             self.lossless_label.setStyleSheet("color: green; font-weight: bold;")
         else:
-            self.lossless_label.setText(
-                f"{self.strings.lossy}\n{self.strings.lossy_warning}"
-            )
+            self.lossless_label.setText(f"{self.strings.lossy}\n{self.strings.lossy_warning}")
             self.lossless_label.setStyleSheet("color: #b86e00; font-weight: bold;")
 
     def _on_selection(self, path: object) -> None:
@@ -368,10 +367,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, self.strings.error_title, self.strings.no_files)
             return
         out_text = self.out_edit.text().strip()
-        if out_text:
-            out_dir = Path(out_text)
-        else:
-            out_dir = paths[0].parent
+        out_dir = Path(out_text) if out_text else paths[0].parent
         out_dir.mkdir(parents=True, exist_ok=True)
 
         self._save_settings()
@@ -437,7 +433,7 @@ class MainWindow(QMainWindow):
             info = inspect_font(path)
             if info.family:
                 family = info.family
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         css = (
             "@font-face {\n"
@@ -460,7 +456,7 @@ class MainWindow(QMainWindow):
             info = inspect_font(path)
             text = "\n".join(f"{k}: {v}" for k, v in info.to_dict().items())
             QMessageBox.information(self, self.strings.font_info, text)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Font info failed")
             QMessageBox.critical(self, self.strings.error_title, str(exc))
 
@@ -468,12 +464,10 @@ class MainWindow(QMainWindow):
 def main() -> int:
     """Entry point for ``glyphshift-gui``."""
     # Offscreen-friendly; respects QT_QPA_PLATFORM.
-    try:
+    with contextlib.suppress(Exception):
         QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
         )
-    except Exception:  # noqa: BLE001
-        pass
 
     app = QApplication(sys.argv)
     app.setApplicationName("GlyphShift")
@@ -487,7 +481,7 @@ def main() -> int:
     window.show()
     try:
         return app.exec()
-    except Exception:  # noqa: BLE001
+    except Exception:
         logging.getLogger(__name__).error(traceback.format_exc())
         return 1
 

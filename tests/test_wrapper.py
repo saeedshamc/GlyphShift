@@ -5,13 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
-
-from glyphshift.core.formats import Format
-from glyphshift.core.models import ConversionOptions
-from glyphshift.core.converter import convert_file
-from glyphshift.core.verify import verify
-from glyphshift.core.models import VerifyMode
 from tests.conftest import file_sha256
+
+from glyphshift.core.converter import convert_file
+from glyphshift.core.formats import Format
+from glyphshift.core.models import ConversionOptions, VerifyMode
+from glyphshift.core.verify import verify
 
 
 def _roundtrip(src: Path, tmp_out: Path, *formats: Format) -> Path:

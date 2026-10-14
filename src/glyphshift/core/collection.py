@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import tempfile
@@ -24,7 +25,7 @@ def list_faces(path: Path | str) -> list[dict]:
 
     try:
         coll = TTCollection(str(path))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise CorruptFontError(f"Cannot open collection {path}: {exc}") from exc
 
     faces: list[dict] = []
@@ -37,7 +38,7 @@ def list_faces(path: Path | str) -> list[dict]:
                         try:
                             family = rec.toUnicode()
                             break
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             continue
             tags = set(font.keys())
             if "CFF2" in tags:
@@ -82,20 +83,15 @@ def extract_face(
 
     try:
         coll = TTCollection(str(path))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise CorruptFontError(f"Cannot open collection {path}: {exc}") from exc
 
     try:
         if index < 0 or index >= len(coll.fonts):
-            raise ConversionError(
-                f"Face index {index} out of range (0..{len(coll.fonts) - 1})"
-            )
+            raise ConversionError(f"Face index {index} out of range (0..{len(coll.fonts) - 1})")
         font: TTFont = coll.fonts[index]
         tags = set(font.keys())
-        if "CFF " in tags or "CFF2" in tags:
-            target = Format.OTF
-        else:
-            target = Format.TTF
+        target = Format.OTF if "CFF " in tags or "CFF2" in tags else Format.TTF
 
         out = Path(dst)
         if out.is_dir():
@@ -118,10 +114,8 @@ def extract_face(
             os.replace(str(tmp_path), str(out))
         except Exception:
             if tmp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     tmp_path.unlink()
-                except OSError:
-                    pass
             raise
     finally:
         coll.close()

@@ -35,15 +35,14 @@ def cff_to_glyf(
     """
     out = resolve_output_path(src, dst, Format.TTF, overwrite=overwrite)
     warnings: list[str] = [
-        "CFF->TTF approximates cubic curves with quadratic segments; "
-        f"max_err={max_err} em-units.",
+        f"CFF->TTF approximates cubic curves with quadratic segments; max_err={max_err} em-units.",
         "CFF hinting is dropped; TrueType hinting is not generated "
         "(consider running ttfautohint externally).",
     ]
 
     try:
         font = TTFont(str(src), recalcTimestamp=False, recalcBBoxes=False, lazy=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ConversionError(f"Failed to open {src}: {exc}") from exc
 
     try:
@@ -83,7 +82,7 @@ def cff_to_glyf(
                 ):
                     glyph = _empty_glyph()
                 tt_glyphs[name] = glyph
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Failed to convert glyph %s: %s — using empty glyph", name, exc)
                 tt_glyphs[name] = _empty_glyph()
                 warnings.append(f"Glyph '{name}' failed Cu2Qu conversion: {exc}")
@@ -98,7 +97,7 @@ def cff_to_glyf(
         for name in glyph_order:
             try:
                 glyf[name].recalcBounds(glyf)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 glyf[name] = _empty_glyph()
 
         # Update hmtx LSB from new glyph bounds where possible.
@@ -183,7 +182,7 @@ def cff_to_glyf(
         font.flavor = None
         try:
             _atomic_save(font, out)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ConversionError(f"Failed to save TTF to {out}: {exc}") from exc
     finally:
         font.close()
@@ -210,7 +209,7 @@ def glyf_to_cff(
 
     try:
         font = TTFont(str(src), recalcTimestamp=False, recalcBBoxes=False, lazy=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ConversionError(f"Failed to open {src}: {exc}") from exc
 
     try:
@@ -237,7 +236,7 @@ def glyf_to_cff(
             try:
                 glyph_set[name].draw(pen)
                 charstrings[name] = pen.getCharString()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Failed to convert glyph %s: %s", name, exc)
                 empty = T2CharStringPen(width, glyphSet=glyph_set)
                 charstrings[name] = empty.getCharString()
@@ -257,7 +256,7 @@ def glyf_to_cff(
                             else:
                                 family = val
                             break
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             continue
 
         # Build a CFF table via FontBuilder, then inject into the original font
@@ -303,7 +302,7 @@ def glyf_to_cff(
 
         try:
             _atomic_save(font, out)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ConversionError(f"Failed to save OTF to {out}: {exc}") from exc
     finally:
         font.close()
@@ -342,7 +341,7 @@ def instantiate_variable(
 
     try:
         font = TTFont(str(src), recalcTimestamp=False, recalcBBoxes=False, lazy=False)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ConversionError(f"Failed to open {src}: {exc}") from exc
 
     try:
@@ -355,7 +354,7 @@ def instantiate_variable(
         _atomic_save(instantiated, out)
     except ConversionError:
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ConversionError(f"Instancing failed: {exc}") from exc
     finally:
         font.close()

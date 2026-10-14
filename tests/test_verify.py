@@ -52,9 +52,7 @@ def test_verify_catches_cmap_edit(persian_ttf: Path, tmp_path: Path) -> None:
     font.close()
     report = verify(persian_ttf, damaged, VerifyMode.STRICT)
     assert not report.passed
-    assert any(
-        i.code in {"critical_cp_missing", "cmap_mapping"} for i in report.errors
-    )
+    assert any(i.code in {"critical_cp_missing", "cmap_mapping"} for i in report.errors)
 
 
 def test_verify_catches_dropped_gsub(persian_ttf: Path, tmp_path: Path) -> None:

@@ -111,7 +111,7 @@ def _inspect_sfnt_tables(path: Path) -> tuple[OutlineType, bool]:
 
     try:
         font = TTFont(str(path), recalcTimestamp=False, recalcBBoxes=False, lazy=True)
-    except Exception as exc:  # noqa: BLE001 — wrap into CorruptFontError
+    except Exception as exc:
         raise CorruptFontError(f"Failed to parse font tables in {path}: {exc}") from exc
     try:
         tags = set(font.keys())
@@ -160,7 +160,7 @@ def detect_format(path: Path | str, *, deep: bool = True) -> DetectedFont:
                             fmt = Format.OTC
                 finally:
                     coll.close()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise CorruptFontError(f"Corrupt font collection: {path}: {exc}") from exc
         detected = DetectedFont(
             format=fmt,
@@ -229,32 +229,31 @@ def detect_format(path: Path | str, *, deep: bool = True) -> DetectedFont:
             warnings=tuple(warnings),
         )
     else:
-        raise UnsupportedFormatError(
-            f"Unsupported or unknown font signature {magic!r} in {path}"
-        )
+        raise UnsupportedFormatError(f"Unsupported or unknown font signature {magic!r} in {path}")
 
     ext_fmt = _extension_to_format(path)
     mismatch = False
-    if ext_fmt is not None and not is_collection:
-        # WOFF/WOFF2 vs TTF/OTF are clear mismatches; TTF vs OTF also matters.
-        if ext_fmt != detected.format:
-            # Allow .otf extension on CFF and .ttf on glyf only — already handled.
-            # Collection extensions handled separately.
-            if not (
-                detected.format in (Format.TTC, Format.OTC)
-                and ext_fmt in (Format.TTC, Format.OTC)
-            ):
-                mismatch = True
-                msg = (
-                    f"Extension '.{path.suffix.lstrip('.')}' does not match "
-                    f"detected format '{detected.format.value}'"
-                )
-                warnings.append(msg)
-                logger.warning("%s: %s", path, msg)
+    same_collection_family = detected.format in (Format.TTC, Format.OTC) and ext_fmt in (
+        Format.TTC,
+        Format.OTC,
+    )
+    if (
+        ext_fmt is not None
+        and not is_collection
+        and ext_fmt != detected.format
+        and not same_collection_family
+    ):
+        mismatch = True
+        msg = (
+            f"Extension '.{path.suffix.lstrip('.')}' does not match "
+            f"detected format '{detected.format.value}'"
+        )
+        warnings.append(msg)
+        logger.warning("%s: %s", path, msg)
 
     return DetectedFont(
         format=detected.format,
-        outline=detected.outline if deep else detected.outline,
+        outline=detected.outline,
         is_variable=detected.is_variable,
         is_collection=detected.is_collection,
         extension_mismatch=mismatch,

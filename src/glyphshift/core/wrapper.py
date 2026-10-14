@@ -48,9 +48,7 @@ def resolve_output_path(
         out = dst
 
     if out.resolve() == src.resolve():
-        raise ConversionError(
-            f"Refusing to overwrite the input file in place: {src}"
-        )
+        raise ConversionError(f"Refusing to overwrite the input file in place: {src}")
 
     if out.exists() and not overwrite:
         raise OutputExistsError(
@@ -132,7 +130,7 @@ def wrap_font(
             recalcBBoxes=False,
             lazy=False,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ConversionError(f"Failed to open font {src}: {exc}") from exc
 
     try:
@@ -154,7 +152,7 @@ def wrap_font(
         # Do not touch head.modified — recalcTimestamp=False already.
         try:
             _atomic_save(font, out)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ConversionError(f"Failed to save converted font to {out}: {exc}") from exc
     finally:
         font.close()

@@ -59,6 +59,6 @@ class ConvertWorker(QRunnable):
                 cancel_event=self._cancel,
             )
             self.signals.finished.emit(results)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Conversion worker failed")
             self.signals.error.emit(str(exc))

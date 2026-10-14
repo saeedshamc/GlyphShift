@@ -19,7 +19,6 @@ from glyphshift.core.formats import (
     OutlineType,
     conversion_is_lossless,
     detect_format,
-    needs_outline_conversion,
 )
 from glyphshift.core.models import ConversionOptions, ConversionResult, VerifyMode, VerifyReport
 from glyphshift.core.outlines import cff_to_glyf, glyf_to_cff, instantiate_variable
@@ -289,7 +288,7 @@ def convert_file(
             lossless=lossless,
             error=exc.message,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Unexpected conversion error for %s", src)
         for p in temps:
             _safe_unlink(p)

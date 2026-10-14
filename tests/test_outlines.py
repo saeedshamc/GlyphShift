@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fontTools.ttLib import TTFont
 import pytest
+from fontTools.ttLib import TTFont
 
 from glyphshift.core.converter import convert_file
 from glyphshift.core.errors import ConversionError
@@ -31,7 +31,9 @@ def test_otf_to_ttf_preserves_cmap_and_order(latin_otf: Path, tmp_out: Path) -> 
     finally:
         src.close()
         dst.close()
-    report = verify(latin_otf, out, VerifyMode.TOLERANT, outline_converted=True, direction="cff_to_glyf")
+    report = verify(
+        latin_otf, out, VerifyMode.TOLERANT, outline_converted=True, direction="cff_to_glyf"
+    )
     assert report.passed or not report.errors
 
 

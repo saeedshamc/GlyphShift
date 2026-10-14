@@ -76,13 +76,13 @@ def _name_record(font: TTFont, name_id: int) -> str | None:
         if record.platformID == 3 and record.langID == 0x409:
             try:
                 return record.toUnicode()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
     for record in name.names:
         if record.nameID == name_id:
             try:
                 return record.toUnicode()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 continue
     return None
 
@@ -136,15 +136,13 @@ def inspect_font(path: Path | str, *, face_index: int | None = None) -> FontInfo
 
         try:
             coll = TTCollection(str(path))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise CorruptFontError(f"Cannot open collection {path}: {exc}") from exc
         try:
             n = len(coll.fonts)
             idx = 0 if face_index is None else face_index
             if idx < 0 or idx >= n:
-                raise CorruptFontError(
-                    f"Collection face index {idx} out of range (0..{n - 1})"
-                )
+                raise CorruptFontError(f"Collection face index {idx} out of range (0..{n - 1})")
             # Work on a copy saved to memory is heavy; use the face directly.
             font = coll.fonts[idx]
             info = _fill_info(path, font, detected, collection_faces=n)
@@ -156,7 +154,7 @@ def inspect_font(path: Path | str, *, face_index: int | None = None) -> FontInfo
 
     try:
         font = TTFont(str(path), recalcTimestamp=False, recalcBBoxes=False, lazy=True)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise CorruptFontError(f"Cannot open font {path}: {exc}") from exc
     try:
         info = _fill_info(path, font, detected)
@@ -189,10 +187,7 @@ def _fill_info(
             )
 
     outline = detected.outline
-    if isinstance(outline, OutlineType):
-        outline_s = outline.value
-    else:
-        outline_s = str(outline)
+    outline_s = outline.value if isinstance(outline, OutlineType) else str(outline)
 
     fmt = detected.format
     fmt_s = fmt.value if isinstance(fmt, Format) else str(fmt)

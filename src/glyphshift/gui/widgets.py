@@ -64,23 +64,21 @@ class DropZone(QLabel):
         self.setMinimumHeight(120)
         self.setWordWrap(True)
         self.apply_strings(strings)
-        self.setStyleSheet(
-            "QLabel { border: 2px dashed #888; border-radius: 8px; padding: 16px; }"
-        )
+        self.setStyleSheet("QLabel { border: 2px dashed #888; border-radius: 8px; padding: 16px; }")
 
     def apply_strings(self, strings: Strings) -> None:
         self.setText(strings.drop_hint)
 
-    def mousePressEvent(self, event) -> None:  # noqa: ANN001, N802
+    def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.browse_requested.emit()
         super().mousePressEvent(event)
 
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
 
-    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+    def dropEvent(self, event: QDropEvent) -> None:
         paths = []
         for url in event.mimeData().urls():
             local = url.toLocalFile()
@@ -123,7 +121,7 @@ class FileListPanel(QWidget):
                     f"{path.name}  ·  {det.format.value.upper()}  ·  "
                     f"{size_kb:.1f} KiB  ·  {info.glyph_count} glyphs"
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 text = f"{path.name}  ·  error: {exc}"
             item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, str(path))
@@ -256,16 +254,10 @@ class PreviewPanel(QWidget):
         layout.addWidget(split)
 
         self.btn_latin.clicked.connect(lambda: self.set_sample(strings.sample_latin, rtl=False))
-        self.btn_persian.clicked.connect(
-            lambda: self.set_sample(strings.sample_persian, rtl=True)
-        )
-        self.btn_digits.clicked.connect(
-            lambda: self.set_sample(strings.sample_digits, rtl=True)
-        )
+        self.btn_persian.clicked.connect(lambda: self.set_sample(strings.sample_persian, rtl=True))
+        self.btn_digits.clicked.connect(lambda: self.set_sample(strings.sample_digits, rtl=True))
         self.btn_zwnj.clicked.connect(lambda: self.set_sample(strings.sample_zwnj, rtl=True))
-        self.btn_arabic.clicked.connect(
-            lambda: self.set_sample(strings.sample_arabic, rtl=True)
-        )
+        self.btn_arabic.clicked.connect(lambda: self.set_sample(strings.sample_arabic, rtl=True))
         self.set_sample(strings.sample_persian, rtl=True)
 
     def apply_strings(self, strings: Strings) -> None:
@@ -305,7 +297,7 @@ class PreviewPanel(QWidget):
             if family:
                 font = QFont(family, 18)
                 self.src_edit.setFont(font)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Preview source failed: %s", exc)
             self.note.setText(str(exc))
 
@@ -325,14 +317,15 @@ class PreviewPanel(QWidget):
             if family:
                 font = QFont(family, 18)
                 self.dst_edit.setFont(font)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Preview converted failed: %s", exc)
 
     @staticmethod
     def _unwrap_for_preview(path: Path) -> bytes:
         """Return sfnt bytes for Qt preview (WOFF/WOFF2 → raw)."""
-        from fontTools.ttLib import TTFont
         import io
+
+        from fontTools.ttLib import TTFont
 
         font = TTFont(str(path), recalcTimestamp=False, recalcBBoxes=False)
         try:
@@ -378,5 +371,5 @@ class CoveragePanel(QWidget):
                 f"scripts={', '.join(info.scripts) or '—'} · "
                 f"blocks={blocks} · flags={', '.join(flags) or '—'}"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.label.setText(str(exc))
