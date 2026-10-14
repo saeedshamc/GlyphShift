@@ -19,7 +19,7 @@ def _format_name(path: Path) -> str:
         info = inspect_font(path)
         if info.family:
             return info.family
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     return path.stem
 
@@ -105,6 +105,8 @@ def font_face_bundle(
     path = Path(path)
     use = presets or suggest_unicode_ranges(path)
     blocks = [
-        font_face_css(path, url=url, unicode_range_preset=p) for p in use if p in UNICODE_RANGE_PRESETS
+        font_face_css(path, url=url, unicode_range_preset=p)
+        for p in use
+        if p in UNICODE_RANGE_PRESETS
     ]
     return "\n".join(blocks)

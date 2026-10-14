@@ -15,7 +15,7 @@ def list_axes(path: Path | str) -> list[dict[str, Any]]:
     path = Path(path)
     try:
         font = TTFont(str(path), recalcTimestamp=False, recalcBBoxes=False, lazy=True)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise CorruptFontError(f"Cannot open font {path}: {exc}") from exc
     try:
         if "fvar" not in font:
@@ -40,12 +40,12 @@ def list_named_instances(path: Path | str) -> list[dict[str, Any]]:
     path = Path(path)
     try:
         font = TTFont(str(path), recalcTimestamp=False, recalcBBoxes=False, lazy=True)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise CorruptFontError(f"Cannot open font {path}: {exc}") from exc
     try:
         if "fvar" not in font:
             return []
-        name_table = font["name"] if "name" in font else None
+        name_table = font.get("name", None)
         out: list[dict[str, Any]] = []
         for inst in font["fvar"].instances:
             label = None
@@ -55,7 +55,7 @@ def list_named_instances(path: Path | str) -> list[dict[str, Any]]:
                         try:
                             label = rec.toUnicode()
                             break
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             continue
             out.append(
                 {

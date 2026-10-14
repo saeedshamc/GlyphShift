@@ -73,8 +73,9 @@ def _sfnt_bytes(font_path: Path) -> bytes:
     """Return raw sfnt bytes (unwrap WOFF/WOFF2 so HarfBuzz sees full tables)."""
     magic = font_path.read_bytes()[:4]
     if magic in (b"wOFF", b"wOF2"):
-        from fontTools.ttLib import TTFont
         import io
+
+        from fontTools.ttLib import TTFont
 
         font = TTFont(str(font_path), recalcTimestamp=False, recalcBBoxes=False)
         try:
@@ -104,7 +105,7 @@ def _shape_text(font_path: Path, text: str) -> ShapeSampleResult:
         gid = info.codepoint
         try:
             names.append(font.get_glyph_name(gid) or f"gid{gid}")
-        except Exception:  # noqa: BLE001
+        except Exception:
             names.append(f"gid{gid}")
     return ShapeSampleResult(
         name="",
@@ -148,10 +149,12 @@ def shape_samples(
                         f"Shaping produced no glyphs for sample '{name}'",
                     )
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Shaping failed for %s (%s): %s", path, name, exc)
             report.samples.append(
-                ShapeSampleResult(name=name, text=text, glyph_names=[], cluster_count=0, error=str(exc))
+                ShapeSampleResult(
+                    name=name, text=text, glyph_names=[], cluster_count=0, error=str(exc)
+                )
             )
             report.issues.append(
                 Issue(Severity.ERROR, f"shape_error_{name}", f"Shaping '{name}' failed: {exc}")
@@ -177,7 +180,9 @@ def compare_shaping(
     for name in src_map:
         if name not in dst_map:
             issues.append(
-                Issue(Severity.ERROR, f"missing_sample_{name}", f"Sample '{name}' missing in output")
+                Issue(
+                    Severity.ERROR, f"missing_sample_{name}", f"Sample '{name}' missing in output"
+                )
             )
             continue
         a, b = src_map[name], dst_map[name]

@@ -18,7 +18,7 @@ def _history_dir() -> Path:
         from platformdirs import user_data_dir
 
         base = Path(user_data_dir("GlyphShift", "GlyphShift"))
-    except Exception:  # noqa: BLE001
+    except Exception:
         base = Path.home() / ".glyphshift"
     path = base / "history"
     path.mkdir(parents=True, exist_ok=True)
@@ -101,7 +101,7 @@ def list_history(*, limit: int = 100, include_undone: bool = False) -> list[Hist
                 continue
             try:
                 entries.append(HistoryEntry.from_dict(json.loads(line)))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning("Skipping corrupt history line")
     if not include_undone:
         entries = [e for e in entries if not e.undone]

@@ -175,7 +175,7 @@ def convert_file(
             for iss in coverage_warnings(verify_source or src):
                 if iss.severity.value in {"warning", "error"}:
                     warnings.append(f"[coverage:{iss.code}] {iss.message}")
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("Coverage scan skipped", exc_info=True)
 
         outline_converted = False
@@ -369,7 +369,7 @@ def _maybe_record_history(result: ConversionResult, options: ConversionOptions) 
             lossless=result.lossless,
             error=result.error,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("History recording skipped", exc_info=True)
 
 
@@ -510,8 +510,7 @@ def convert_many(
         done = 0
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {
-                pool.submit(convert_file, path, out_dir, target, opts): path
-                for path, opts in jobs
+                pool.submit(convert_file, path, out_dir, target, opts): path for path, opts in jobs
             }
             for fut in as_completed(futures):
                 if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():

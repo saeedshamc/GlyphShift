@@ -30,7 +30,11 @@ def build_html_report(
         color = {"OK": "#0a7", "FAIL": "#c33", "SKIP": "#a80"}[status]
         verify = "-"
         if r.verify_report is not None:
-            verify = "passed" if r.verify_report.passed else f"failed ({len(r.verify_report.errors)} err)"
+            verify = (
+                "passed"
+                if r.verify_report.passed
+                else f"failed ({len(r.verify_report.errors)} err)"
+            )
         issues = ""
         if r.verify_report:
             bits = [f"[{i.severity.value}] {i.code}" for i in r.verify_report.issues[:8]]
@@ -66,7 +70,7 @@ def build_html_report(
 </head>
 <body>
   <h1>{_esc(title)}</h1>
-  <p class="meta">Generated { _esc(now) } · {_esc(converted)} converted ·
+  <p class="meta">Generated {_esc(now)} · {_esc(converted)} converted ·
      {_esc(failed)} failed · {_esc(skipped)} skipped · {_esc(len(results))} total</p>
   <p class="meta">Tip: use your browser Print → Save as PDF for an archival PDF copy.</p>
   <table>

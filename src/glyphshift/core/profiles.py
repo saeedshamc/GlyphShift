@@ -74,6 +74,4 @@ def apply_profile(
 
 
 def list_profiles() -> list[dict[str, str]]:
-    return [
-        {"id": p.value, "name": p.value, "description": p.description} for p in Profile
-    ]
+    return [{"id": p.value, "name": p.value, "description": p.description} for p in Profile]

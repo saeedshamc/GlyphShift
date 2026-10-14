@@ -11,10 +11,15 @@
 
 - **Lossless container conversions** between TTF/OTF and WOFF/WOFF2 (no subsetting, no table drops)
 - **Optional outline conversion** (CFF ↔ TrueType) with explicit lossy warnings
+- **Profiles**: `web` → WOFF2, `desktop`, `lossless` (refuses outline/instance paths)
 - **Automatic verification** after every convert (cmap, glyph order, GSUB/GPOS, metrics, names)
-- **Persian/Arabic aware** checks for ZWNJ (U+200C), Persian digits (U+06F0–U+06F9), Arabic-Indic digits, presentation forms, and `arab` features (`init`/`medi`/`fina`/`isol`/`rlig`/`mark`/…)
+- **HarfBuzz shaping checks** (`glyphshift shape`, optional `pip install "glyphshift[shape]"`)
+- **Persian/Arabic coverage** advisories (ZWNJ, digits, GSUB/GPOS) before convert
+- **HTML batch reports** (print-to-PDF) and **parallel workers**
+- **CSS `@font-face`** helper with `unicode-range` presets
+- **Watch folder**, **conversion history** with safe undo (deletes outputs only)
 - **TTC/OTC** collection listing and splitting
-- **Variable fonts**: wrapper conversions keep `fvar`/`gvar`/`avar`/…; outline conversion refused unless `--instance` is used
+- **Variable fonts**: wrapper keeps `fvar`/`gvar`/`avar`/…; optional axis instancing
 - CLI + GUI on Windows, macOS, and Linux
 
 ## Conversion matrix
@@ -39,22 +44,28 @@ Glyph count, glyph names/order, full cmap, GSUB/GPOS/GDEF, and name/legal record
 
 ```bash
 pip install glyphshift
-pip install "glyphshift[gui]"   # includes PySide6
-pipx install glyphshift        # isolated CLI
+pip install "glyphshift[gui]"     # PySide6 desktop UI
+pip install "glyphshift[shape]"   # HarfBuzz shaping checks
+pipx install glyphshift           # isolated CLI
 ```
 
-Standalone one-file binaries are attached to [GitHub Releases](https://github.com/SaeedShamsi/GlyphShift/releases) (built on each OS with PyInstaller — PyInstaller cannot cross-compile).
+Standalone one-file binaries are attached to [GitHub Releases](https://github.com/SaeedShamsi/GlyphShift/releases) (built on each OS with PyInstaller — PyInstaller cannot cross-compile). See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for VS Code tasks, Figma workflow, and installer notes.
 
 ## CLI usage
 
 ```bash
-glyphshift convert font.ttf --to woff2
-glyphshift convert fonts/ --to woff --out out/ --recursive
+glyphshift convert font.ttf --profile web
+glyphshift convert fonts/ --to woff2 --out out/ -r --workers 4 --report out/report.html
 glyphshift convert arabic.otf --to ttf --max-err 1.0   # lossy outline path
 glyphshift info font.ttf --json
+glyphshift coverage font.ttf
+glyphshift shape source.ttf converted.woff2
+glyphshift css font.woff2 --bundle
+glyphshift watch ./drop --to woff2 --out ./out
+glyphshift history --limit 20
 glyphshift verify source.ttf converted.woff2 --strict
+glyphshift profiles
 glyphshift formats
-glyphshift --version
 ```
 
 Exit codes: `0` success · `1` some failures · `2` usage error · `3` verification failure.
@@ -67,11 +78,11 @@ glyphshift-gui
 # or: python -m glyphshift.gui
 ```
 
-- Drag-and-drop files/folders, target format picker, advanced options
-- Live **LOSSLESS / LOSSY** indicator
-- Background conversion with progress and cancel
-- Side-by-side preview (Latin / Persian / digits / ZWNJ / Arabic samples), RTL-aware
-- Verification report, coverage panel, Font info, English ⇄ فارسی
+- Drag-and-drop files/folders, **profiles**, target format, advanced options (workers, WOFF metadata)
+- Live **LOSSLESS / LOSSY** indicator; optional variable-axis instancing
+- Background conversion with progress and cancel; light/dark theme
+- Side-by-side preview (Latin / Persian / digits / ZWNJ / Arabic), RTL-aware
+- Verification report, coverage panel, history undo, CSS unicode-range copy, English ⇄ فارسی
 
 <!-- Screenshots: add docs/screenshots/*.png when available -->
 

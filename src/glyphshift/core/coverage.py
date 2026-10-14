@@ -7,7 +7,6 @@ from pathlib import Path
 from glyphshift.core.info import inspect_font
 from glyphshift.core.models import Issue, Severity
 
-
 CRITICAL_FEATURES = ("init", "medi", "fina", "isol", "rlig", "mark", "mkmk")
 
 

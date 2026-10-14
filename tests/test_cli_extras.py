@@ -27,7 +27,16 @@ def test_convert_profile_web(latin_ttf: Path, tmp_path: Path) -> None:
     out.mkdir()
     r = runner.invoke(
         main,
-        ["convert", str(latin_ttf), "--profile", "web", "--out", str(out), "--json", "--no-history"],
+        [
+            "convert",
+            str(latin_ttf),
+            "--profile",
+            "web",
+            "--out",
+            str(out),
+            "--json",
+            "--no-history",
+        ],
     )
     assert r.exit_code == 0, r.output
     data = json.loads(r.output)

@@ -239,8 +239,7 @@ def convert_cmd(
         Path(dest).mkdir(parents=True, exist_ok=True)
         if not as_json:
             click.echo(
-                f"Converting {len(files)} file(s) to {fmt.value.upper()} "
-                f"(workers={opts.workers})…"
+                f"Converting {len(files)} file(s) to {fmt.value.upper()} (workers={opts.workers})…"
             )
 
         def progress(done: int, total: int, current: str) -> None:
@@ -251,9 +250,7 @@ def convert_cmd(
 
         results = convert_many(files, dest, fmt, opts, progress_cb=progress)
         verify_failures = sum(
-            1
-            for r in results
-            if not r.success and r.verify_report and not r.verify_report.passed
+            1 for r in results if not r.success and r.verify_report and not r.verify_report.passed
         )
         if not as_json:
             for result in results:
@@ -430,7 +427,9 @@ def coverage_cmd(file: Path, as_json: bool) -> None:
 
 @main.command("shape")
 @click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.argument("other", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument(
+    "other", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path)
+)
 @click.option("--json", "as_json", is_flag=True)
 @click.pass_context
 def shape_cmd(ctx: click.Context, file: Path, other: Path | None, as_json: bool) -> None:
@@ -467,7 +466,11 @@ def history_cmd(limit: int, undo_id: str | None, as_json: bool) -> None:
 
     if undo_id:
         entry = undo_entry(undo_id, delete_output=True)
-        click.echo(json.dumps(entry.to_dict(), ensure_ascii=False, indent=2) if as_json else f"Undone {entry.id}")
+        click.echo(
+            json.dumps(entry.to_dict(), ensure_ascii=False, indent=2)
+            if as_json
+            else f"Undone {entry.id}"
+        )
         return
     entries = list_history(limit=limit)
     if as_json:

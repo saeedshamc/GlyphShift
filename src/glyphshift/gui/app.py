@@ -330,9 +330,7 @@ class MainWindow(QMainWindow):
         self.verify_cb.setChecked(self.settings.value("verify", True, type=bool))
         self.overwrite_cb.setChecked(self.settings.value("overwrite", False, type=bool))
         self.reverse_dir.setChecked(self.settings.value("reverse_direction", True, type=bool))
-        self.preserve_flavor_cb.setChecked(
-            self.settings.value("preserve_flavor", True, type=bool)
-        )
+        self.preserve_flavor_cb.setChecked(self.settings.value("preserve_flavor", True, type=bool))
         self.workers_spin.setValue(int(self.settings.value("workers", 1)))
         theme = str(self.settings.value("theme", "auto"))
         tidx = self.theme_combo.findData(theme)
@@ -622,9 +620,7 @@ class MainWindow(QMainWindow):
         layout = box.layout()
         if layout is not None:
             layout.addWidget(text, 1, 0, 1, layout.columnCount())
-        box.setStandardButtons(
-            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Abort
-        )
+        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Abort)
         box.button(QMessageBox.StandardButton.Abort).setText("Undo latest")
         result = box.exec()
         if result == QMessageBox.StandardButton.Abort and entries:
