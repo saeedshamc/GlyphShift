@@ -24,7 +24,9 @@ A native Figma plugin is **not** shipped yet. Recommended workflow today:
 
 A future plugin could call a local GlyphShift daemon; tracking issue: open a GitHub issue titled `figma-plugin`.
 
-## Standalone installers
+## Standalone installers / binaries
+
+Full local and CI build instructions: **[BUILD.md](BUILD.md)**.
 
 GitHub Actions [`release.yml`](../.github/workflows/release.yml) builds **one-file** PyInstaller binaries per OS on tag `v*`:
 
@@ -35,6 +37,18 @@ GitHub Actions [`release.yml`](../.github/workflows/release.yml) builds **one-fi
 | `glyphshift-linux` / `glyphshift-gui-linux` | Linux |
 
 PyInstaller cannot cross-compile — each OS builds its own binary.
+
+Local quick builds:
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+```
+
+```bash
+# macOS / Linux
+./scripts/build_unix.sh macos   # or: linux
+```
 
 Optional next step: wrap the Windows `.exe` in Inno Setup / MSI and the macOS binary in a `.dmg`. The Release assets are already installable by downloading and placing on `PATH`.
 

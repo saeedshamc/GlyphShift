@@ -77,6 +77,7 @@ jobs:
           --name glyphshift-gui
           --paths src
           --hidden-import PySide6
+          --collect-all PySide6
           src/glyphshift/gui/__main__.py
 
       - name: Prepare binary artifacts (Unix)

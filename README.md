@@ -49,7 +49,17 @@ pip install "glyphshift[shape]"   # HarfBuzz shaping checks
 pipx install glyphshift           # isolated CLI
 ```
 
-Standalone one-file binaries are attached to [GitHub Releases](https://github.com/SaeedShamsi/GlyphShift/releases) (built on each OS with PyInstaller — PyInstaller cannot cross-compile). See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for VS Code tasks, Figma workflow, and installer notes.
+Standalone one-file binaries are attached to [GitHub Releases](https://github.com/SaeedShamsi/GlyphShift/releases) (built on each OS with PyInstaller — PyInstaller cannot cross-compile).
+
+- How to build locally on **Windows / macOS / Linux**: [docs/BUILD.md](docs/BUILD.md)
+- VS Code tasks, Figma workflow, installer notes: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
+
+```powershell
+# Windows (this machine)
+powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
+# → release-bin\glyphshift-windows.exe
+# → release-bin\glyphshift-gui-windows.exe
+```
 
 ## CLI usage
 

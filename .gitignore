@@ -52,8 +52,9 @@ Thumbs.db
 # PyInstaller
 *.manifest
 *.spec
-!glyphshift.spec
-!glyphshift-gui.spec
+release-bin/
+release-bin/
+release-bin/
 
 # Local / secrets
 .env
