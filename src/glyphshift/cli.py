@@ -130,9 +130,16 @@ def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
 @click.option(
     "--to",
     "target",
-    required=True,
+    required=False,
+    default=None,
     type=click.Choice(["ttf", "otf", "woff", "woff2"], case_sensitive=False),
-    help="Target format.",
+    help="Target format (optional when --profile is set).",
+)
+@click.option(
+    "--profile",
+    type=click.Choice(["web", "desktop", "lossless"], case_sensitive=False),
+    default=None,
+    help="Preset: web→woff2, desktop→ttf/otf, lossless refuses outline conversion.",
 )
 @click.option(
     "--out", "out_dir", type=click.Path(path_type=Path), default=None, help="Output directory."
@@ -150,12 +157,17 @@ def main(ctx: click.Context, verbose: int, quiet: bool) -> None:
 @click.option("--index", "ttc_index", type=int, default=None, help="TTC/OTC face index.")
 @click.option("--instance", default=None, help="Variable instance, e.g. wght=400.")
 @click.option("--recursive", "-r", is_flag=True, help="Recurse into directories.")
+@click.option("--workers", type=int, default=1, show_default=True, help="Parallel workers.")
+@click.option("--report", "report_path", type=click.Path(path_type=Path), default=None)
+@click.option("--no-flavor-data", is_flag=True, help="Drop WOFF metadata/private data.")
+@click.option("--no-history", is_flag=True, help="Do not record conversion history.")
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable JSON output.")
 @click.pass_context
 def convert_cmd(
     ctx: click.Context,
     inputs: tuple[Path, ...],
-    target: str,
+    target: str | None,
+    profile: str | None,
     out_dir: Path | None,
     overwrite: bool,
     max_err: float,
@@ -164,9 +176,17 @@ def convert_cmd(
     ttc_index: int | None,
     instance: str | None,
     recursive: bool,
+    workers: int,
+    report_path: Path | None,
+    no_flavor_data: bool,
+    no_history: bool,
     as_json: bool,
 ) -> None:
     """Convert font INPUT(s) to the given format."""
+    from glyphshift.core.converter import convert_many
+    from glyphshift.core.profiles import apply_profile
+    from glyphshift.core.report import write_html_report
+
     try:
         files = _collect_inputs(inputs, recursive=recursive)
     except click.ClickException:
@@ -177,7 +197,6 @@ def convert_cmd(
     if not files:
         raise click.ClickException("No font files found.")
 
-    fmt = Format.from_string(target)
     opts = ConversionOptions(
         max_err=max_err,
         overwrite=overwrite,
@@ -186,36 +205,62 @@ def convert_cmd(
         ttc_index=ttc_index,
         instance=instance,
         recursive=recursive,
+        workers=max(1, workers),
+        preserve_flavor_data=not no_flavor_data,
+        record_history=not no_history,
     )
 
-    results: list[ConversionResult] = []
-    verify_failures = 0
+    if profile:
+        explicit = Format.from_string(target) if target else None
+        fmt, opts = apply_profile(profile, opts, target=explicit)
+    elif target:
+        fmt = Format.from_string(target)
+    else:
+        raise click.ClickException("Provide --to FORMAT or --profile NAME")
 
-    if not as_json:
-        click.echo(f"Converting {len(files)} file(s) to {fmt.value.upper()}…")
-
-    def _run_one(path: Path) -> ConversionResult:
-        _lossless, label = _lossless_label(path, fmt)
-        if not as_json and not ctx.obj.get("quiet"):
-            click.echo(f"{path}: {label}", err=True)
-        dest = out_dir if out_dir is not None else (path.parent if len(files) > 1 else None)
-        return convert_file(path, dest, fmt, opts)
-
-    if as_json or ctx.obj.get("quiet"):
-        iterable: Iterable[Path] = files
-        for path in iterable:
-            result = _run_one(path)
+    dest = out_dir if out_dir is not None else (files[0].parent if len(files) > 1 else None)
+    if dest is None:
+        # Single file, write beside source via convert_file path logic
+        results = []
+        verify_failures = 0
+        if not as_json:
+            click.echo(f"Converting {len(files)} file(s) to {fmt.value.upper()}…")
+        for path in files:
+            _lossless, label = _lossless_label(path, fmt)
+            if not as_json and not ctx.obj.get("quiet"):
+                click.echo(f"{path}: {label}", err=True)
+            result = convert_file(path, None, fmt, opts)
             results.append(result)
             if not result.success and result.verify_report and not result.verify_report.passed:
                 verify_failures += 1
-    else:
-        with click.progressbar(files, label="convert", show_pos=True, file=sys.stderr) as bar:
-            for path in bar:
-                result = _run_one(path)
-                results.append(result)
-                if not result.success and result.verify_report and not result.verify_report.passed:
-                    verify_failures += 1
+            if not as_json:
                 _print_result(result, as_json=False)
+    else:
+        Path(dest).mkdir(parents=True, exist_ok=True)
+        if not as_json:
+            click.echo(
+                f"Converting {len(files)} file(s) to {fmt.value.upper()} "
+                f"(workers={opts.workers})…"
+            )
+
+        def progress(done: int, total: int, current: str) -> None:
+            if as_json or ctx.obj.get("quiet"):
+                return
+            if current:
+                click.echo(f"[{done}/{total}] {current}", err=True)
+
+        results = convert_many(files, dest, fmt, opts, progress_cb=progress)
+        verify_failures = sum(
+            1
+            for r in results
+            if not r.success and r.verify_report and not r.verify_report.passed
+        )
+        if not as_json:
+            for result in results:
+                _print_result(result, as_json=False)
+
+    if report_path is not None:
+        write_html_report(results, report_path)
 
     converted = sum(1 for r in results if r.success)
     failed = sum(1 for r in results if not r.success and not r.skipped)
@@ -227,6 +272,8 @@ def convert_cmd(
         "skipped": skipped,
         "results": [r.to_dict() for r in results],
     }
+    if report_path is not None:
+        payload["report"] = str(report_path)
 
     if as_json:
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -237,6 +284,8 @@ def convert_cmd(
             f"{click.style(str(skipped), fg='yellow')} skipped, "
             f"{click.style(str(failed), fg='red')} failed"
         )
+        if report_path is not None:
+            click.echo(f"Report: {report_path}")
 
     if verify_failures and failed:
         ctx.exit(EXIT_VERIFY)
@@ -332,6 +381,141 @@ def formats_cmd() -> None:
     click.echo()
     click.echo("Variable fonts: wrapper conversions keep fvar/gvar/avar/…;")
     click.echo("  outline conversion refused unless --instance is used (lossy).")
+    click.echo()
+    click.echo("Profiles: web, desktop, lossless  (see: glyphshift profiles)")
+
+
+@main.command("profiles")
+@click.option("--json", "as_json", is_flag=True)
+def profiles_cmd(as_json: bool) -> None:
+    """List built-in conversion profiles."""
+    from glyphshift.core.profiles import list_profiles
+
+    data = list_profiles()
+    if as_json:
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+    for p in data:
+        click.echo(f"{p['id']}: {p['description']}")
+
+
+@main.command("css")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--preset", default=None, help="latin|arabic|persian (or omit for bundle)")
+@click.option("--url", default=None, help="Override url(...) path in CSS")
+@click.option("--bundle", is_flag=True, help="Emit suggested presets as multiple rules")
+def css_cmd(file: Path, preset: str | None, url: str | None, bundle: bool) -> None:
+    """Generate @font-face CSS (with unicode-range)."""
+    from glyphshift.core.css import font_face_bundle, font_face_css
+
+    if bundle or preset is None:
+        click.echo(font_face_bundle(file, url=url))
+    else:
+        click.echo(font_face_css(file, url=url, unicode_range_preset=preset))
+
+
+@main.command("coverage")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--json", "as_json", is_flag=True)
+def coverage_cmd(file: Path, as_json: bool) -> None:
+    """Persian/Arabic coverage advisories before conversion."""
+    from glyphshift.core.coverage import coverage_warnings, format_coverage_summary
+
+    issues = coverage_warnings(file)
+    if as_json:
+        click.echo(json.dumps([i.to_dict() for i in issues], ensure_ascii=False, indent=2))
+        return
+    click.echo(format_coverage_summary(file))
+
+
+@main.command("shape")
+@click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("other", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_context
+def shape_cmd(ctx: click.Context, file: Path, other: Path | None, as_json: bool) -> None:
+    """HarfBuzz shaping check (optional: compare FILE vs OTHER)."""
+    from glyphshift.core.shaping import compare_shaping, shape_samples
+
+    report = compare_shaping(file, other) if other else shape_samples(file)
+    if as_json:
+        click.echo(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        status = (
+            click.style("PASSED", fg="green")
+            if report.passed
+            else click.style("FAILED/WARN", fg="yellow")
+        )
+        click.echo(f"Shaping {status} (harfbuzz={'yes' if report.available else 'no'})")
+        for sample in report.samples:
+            click.echo(f"  {sample.name}: {len(sample.glyph_names)} glyphs")
+        for iss in report.issues:
+            color = {"error": "red", "warning": "yellow", "info": "cyan"}[iss.severity.value]
+            click.echo(click.style(f"  [{iss.severity.value}] {iss.code}: {iss.message}", fg=color))
+    if report.available and not report.passed:
+        ctx.exit(EXIT_VERIFY)
+    ctx.exit(EXIT_OK)
+
+
+@main.command("history")
+@click.option("--limit", default=20, show_default=True)
+@click.option("--undo", "undo_id", default=None, help="Undo entry id (deletes output only).")
+@click.option("--json", "as_json", is_flag=True)
+def history_cmd(limit: int, undo_id: str | None, as_json: bool) -> None:
+    """Show or undo recent conversions."""
+    from glyphshift.core.history import list_history, undo_entry
+
+    if undo_id:
+        entry = undo_entry(undo_id, delete_output=True)
+        click.echo(json.dumps(entry.to_dict(), ensure_ascii=False, indent=2) if as_json else f"Undone {entry.id}")
+        return
+    entries = list_history(limit=limit)
+    if as_json:
+        click.echo(json.dumps([e.to_dict() for e in entries], ensure_ascii=False, indent=2))
+        return
+    if not entries:
+        click.echo("No history.")
+        return
+    for e in entries:
+        flag = "OK" if e.success else "FAIL"
+        click.echo(f"{e.id[:8]}  {flag}  {e.input_path} -> {e.output_path or '-'}")
+
+
+@main.command("watch")
+@click.argument("folder", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--to", "target", required=True, type=click.Choice(["ttf", "otf", "woff", "woff2"]))
+@click.option("--out", "out_dir", required=True, type=click.Path(path_type=Path))
+@click.option("--interval", default=2.0, show_default=True)
+@click.option("--overwrite", is_flag=True)
+@click.option("--profile", type=click.Choice(["web", "desktop", "lossless"]), default=None)
+def watch_cmd(
+    folder: Path,
+    target: str,
+    out_dir: Path,
+    interval: float,
+    overwrite: bool,
+    profile: str | None,
+) -> None:
+    """Watch FOLDER and convert new/changed fonts (Ctrl+C to stop)."""
+    from glyphshift.core.profiles import apply_profile
+    from glyphshift.core.watch import watch_folder
+
+    opts = ConversionOptions(overwrite=overwrite, verify=True)
+    fmt = Format.from_string(target)
+    if profile:
+        fmt, opts = apply_profile(profile, opts, target=fmt)
+    click.echo(f"Watching {folder} → {out_dir} ({fmt.value}). Ctrl+C to stop.")
+    try:
+        watch_folder(
+            folder,
+            out_dir,
+            fmt,
+            opts,
+            interval=interval,
+            on_result=lambda r: _print_result(r, as_json=False),
+        )
+    except KeyboardInterrupt:
+        click.echo("\nStopped.")
 
 
 if __name__ == "__main__":
