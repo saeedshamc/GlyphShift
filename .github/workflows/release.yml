@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-python:
+    name: Build sdist/wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+
+  build-binaries:
+    name: PyInstaller (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux
+          - os: windows-latest
+            artifact: windows
+          - os: macos-latest
+            artifact: macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # PyInstaller cannot cross-compile; each OS builds its own binaries.
+      - name: Install package and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,gui]"
+
+      - name: Build CLI (one-file)
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onefile
+          --name glyphshift
+          --paths src
+          src/glyphshift/cli.py
+
+      - name: Build GUI (one-file, windowed)
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name glyphshift-gui
+          --paths src
+          --hidden-import PySide6
+          src/glyphshift/gui/__main__.py
+
+      - name: Prepare binary artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p release-bin
+          cp dist/glyphshift release-bin/glyphshift-${{ matrix.artifact }}
+          cp dist/glyphshift-gui release-bin/glyphshift-gui-${{ matrix.artifact }}
+
+      - name: Prepare binary artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-bin | Out-Null
+          Copy-Item dist/glyphshift.exe release-bin/glyphshift-windows.exe
+          Copy-Item dist/glyphshift-gui.exe release-bin/glyphshift-gui-windows.exe
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.artifact }}
+          path: release-bin/*
+
+  publish-release:
+    name: Attach to GitHub Release
+    needs: [build-python, build-binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p upload
+          find artifacts -type f -exec cp {} upload/ \;
+          ls -la upload
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: upload/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
