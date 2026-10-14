@@ -280,7 +280,7 @@ def convert_file(
                 _safe_unlink(p)
 
         size_after = final_path.stat().st_size if final_path.exists() else None
-        return ConversionResult(
+        result = ConversionResult(
             input_path=src,
             output_path=final_path,
             input_format=input_format,
@@ -293,10 +293,12 @@ def convert_file(
             success=True,
             lossless=lossless,
         )
+        _maybe_record_history(result, options)
+        return result
 
     except VerificationError as exc:
         vr = exc.report if isinstance(exc.report, VerifyReport) else None
-        return ConversionResult(
+        result = ConversionResult(
             input_path=src,
             output_path=None,
             input_format=input_format,
@@ -310,10 +312,12 @@ def convert_file(
             lossless=lossless,
             error=exc.message,
         )
+        _maybe_record_history(result, options)
+        return result
     except GlyphShiftError as exc:
         for p in temps:
             _safe_unlink(p)
-        return ConversionResult(
+        result = ConversionResult(
             input_path=src,
             output_path=None,
             input_format=input_format,
@@ -327,11 +331,13 @@ def convert_file(
             lossless=lossless,
             error=exc.message,
         )
+        _maybe_record_history(result, options)
+        return result
     except Exception as exc:
         logger.exception("Unexpected conversion error for %s", src)
         for p in temps:
             _safe_unlink(p)
-        return ConversionResult(
+        result = ConversionResult(
             input_path=src,
             output_path=None,
             input_format=input_format,
@@ -345,6 +351,26 @@ def convert_file(
             lossless=lossless,
             error=str(exc),
         )
+        _maybe_record_history(result, options)
+        return result
+
+
+def _maybe_record_history(result: ConversionResult, options: ConversionOptions) -> None:
+    if not options.record_history:
+        return
+    try:
+        from glyphshift.core.history import record_conversion
+
+        record_conversion(
+            input_path=result.input_path,
+            output_path=result.output_path,
+            target=result.output_format,
+            success=result.success,
+            lossless=result.lossless,
+            error=result.error,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("History recording skipped", exc_info=True)
 
 
 def _clone_options(options: ConversionOptions, **updates: object) -> ConversionOptions:
