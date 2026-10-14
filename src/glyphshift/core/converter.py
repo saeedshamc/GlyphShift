@@ -347,6 +347,25 @@ def convert_file(
         )
 
 
+def _clone_options(options: ConversionOptions, **updates: object) -> ConversionOptions:
+    data = {
+        "max_err": options.max_err,
+        "reverse_direction": options.reverse_direction,
+        "overwrite": options.overwrite,
+        "verify": options.verify,
+        "keep_on_fail": options.keep_on_fail,
+        "ttc_index": options.ttc_index,
+        "instance": options.instance,
+        "recursive": options.recursive,
+        "lossless_only": options.lossless_only,
+        "preserve_flavor_data": options.preserve_flavor_data,
+        "workers": options.workers,
+        "record_history": options.record_history,
+    }
+    data.update(updates)
+    return ConversionOptions(**data)  # type: ignore[arg-type]
+
+
 def convert_many(
     sources: list[Path | str],
     out_dir: Path | str,
@@ -357,8 +376,11 @@ def convert_many(
 ) -> list[ConversionResult]:
     """Convert many fonts into ``out_dir``.
 
-    ``cancel_event`` may be a ``threading.Event`` (or any object with ``is_set()``).
+    When ``options.workers`` > 1, jobs run in a thread pool (fontTools releases
+    the GIL around much of I/O). ``cancel_event`` may be a ``threading.Event``.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     options = options or ConversionOptions()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -366,12 +388,12 @@ def convert_many(
         target = Format.from_string(target)
 
     paths = [Path(p) for p in sources]
-    results: list[ConversionResult] = []
-    total = len(paths)
+    jobs: list[tuple[Path, ConversionOptions]] = []
+    early: list[ConversionResult] = []
 
-    for i, path in enumerate(paths):
+    for path in paths:
         if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
-            results.append(
+            early.append(
                 ConversionResult(
                     input_path=path,
                     output_path=None,
@@ -388,14 +410,10 @@ def convert_many(
                 )
             )
             continue
-
-        if progress_cb is not None:
-            progress_cb(i, total, str(path))
-
         try:
             det = detect_format(path, deep=False)
         except GlyphShiftError as exc:
-            results.append(
+            early.append(
                 ConversionResult(
                     input_path=path,
                     output_path=None,
@@ -415,7 +433,7 @@ def convert_many(
             try:
                 faces = list_faces(path)
             except GlyphShiftError as exc:
-                results.append(
+                early.append(
                     ConversionResult(
                         input_path=path,
                         output_path=None,
@@ -431,18 +449,51 @@ def convert_many(
                 )
                 continue
             for face in faces:
-                opts = ConversionOptions(
-                    max_err=options.max_err,
-                    reverse_direction=options.reverse_direction,
-                    overwrite=options.overwrite,
-                    verify=options.verify,
-                    keep_on_fail=options.keep_on_fail,
-                    ttc_index=face["index"],
-                    instance=options.instance,
-                )
-                results.append(convert_file(path, out_dir, target, opts))
+                jobs.append((path, _clone_options(options, ttc_index=face["index"])))
         else:
-            results.append(convert_file(path, out_dir, target, options))
+            jobs.append((path, options))
+
+    results: list[ConversionResult] = list(early)
+    total = len(jobs)
+    workers = max(1, int(options.workers or 1))
+
+    if workers == 1 or total <= 1:
+        for i, (path, opts) in enumerate(jobs):
+            if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+                results.append(
+                    ConversionResult(
+                        input_path=path,
+                        output_path=None,
+                        input_format="",
+                        output_format=target.value,
+                        size_before=0,
+                        size_after=None,
+                        duration_seconds=0.0,
+                        verify_report=None,
+                        warnings=["Cancelled"],
+                        success=False,
+                        skipped=True,
+                        error="Cancelled",
+                    )
+                )
+                continue
+            if progress_cb is not None:
+                progress_cb(i, total, str(path))
+            results.append(convert_file(path, out_dir, target, opts))
+    else:
+        done = 0
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(convert_file, path, out_dir, target, opts): path
+                for path, opts in jobs
+            }
+            for fut in as_completed(futures):
+                if cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)():
+                    break
+                results.append(fut.result())
+                done += 1
+                if progress_cb is not None:
+                    progress_cb(done, total, str(futures[fut]))
 
     if progress_cb is not None:
         progress_cb(total, total, "")
