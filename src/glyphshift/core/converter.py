@@ -165,8 +165,10 @@ def convert_file(
 
         if need_outline:
             lossless = False
+            mid_dir = out_path.parent
+            mid_dir.mkdir(parents=True, exist_ok=True)
             if detected.outline in (OutlineType.CFF, OutlineType.CFF2):
-                mid = work_src.parent / f".{work_src.stem}.cff2glyf.tmp.ttf"
+                mid = mid_dir / f".{out_path.stem}.cff2glyf.tmp.ttf"
                 mid, ow, max_err_used = cff_to_glyf(
                     work_src,
                     mid,
@@ -189,7 +191,7 @@ def convert_file(
                 else:
                     final_path = wrap_font(mid, out_path, target, overwrite=True)
             else:
-                mid = work_src.parent / f".{work_src.stem}.glyf2cff.tmp.otf"
+                mid = mid_dir / f".{out_path.stem}.glyf2cff.tmp.otf"
                 mid, ow = glyf_to_cff(work_src, mid, overwrite=True)
                 warnings.extend(ow)
                 temps.append(mid)

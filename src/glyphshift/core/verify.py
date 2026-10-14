@@ -66,10 +66,27 @@ def _issue(severity: Severity, code: str, message: str) -> Issue:
 
 
 def _table_xml(font: TTFont, tag: str) -> str:
-    """Serialize a single table to XML for semantic comparison."""
+    """Serialize a single table to XML for semantic comparison.
+
+    Strips the outer ``ttFont`` wrapper attributes (sfntVersion etc.) so that
+    outline conversions, which legitimately change sfntVersion, do not create
+    false positives when comparing table content.
+    """
     buf = io.StringIO()
     font.saveXML(buf, tables=[tag])
-    return buf.getvalue()
+    text = buf.getvalue()
+    lines = text.splitlines()
+    cleaned: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("<?xml"):
+            continue
+        if stripped.startswith("<ttFont") or stripped.startswith("</ttFont>"):
+            continue
+        if not stripped:
+            continue
+        cleaned.append(line.rstrip())
+    return "\n".join(cleaned)
 
 
 def _cmap_subtables(font: TTFont) -> dict[tuple[int, int], dict[int, str]]:
@@ -356,20 +373,37 @@ def verify(
         if "hmtx" in src_font and "hmtx" in dst_font:
             src_h = src_font["hmtx"].metrics
             dst_h = dst_font["hmtx"].metrics
-            hmtx_diffs = [
-                g
-                for g in src_order
-                if g in src_h and g in dst_h and src_h[g] != dst_h[g]
-            ]
-            if hmtx_diffs:
-                issues.append(
-                    _issue(
-                        Severity.ERROR,
-                        "hmtx",
-                        f"hmtx differs for {len(hmtx_diffs)} glyph(s) "
-                        f"(e.g. {hmtx_diffs[:5]})",
+            if outline_converted:
+                # Advance widths must match; LSB often changes with new bounds.
+                width_diffs = [
+                    g
+                    for g in src_order
+                    if g in src_h and g in dst_h and src_h[g][0] != dst_h[g][0]
+                ]
+                if width_diffs:
+                    issues.append(
+                        _issue(
+                            Severity.ERROR,
+                            "hmtx_width",
+                            f"hmtx advance width differs for {len(width_diffs)} glyph(s) "
+                            f"(e.g. {width_diffs[:5]})",
+                        )
                     )
-                )
+            else:
+                hmtx_diffs = [
+                    g
+                    for g in src_order
+                    if g in src_h and g in dst_h and src_h[g] != dst_h[g]
+                ]
+                if hmtx_diffs:
+                    issues.append(
+                        _issue(
+                            Severity.ERROR,
+                            "hmtx",
+                            f"hmtx differs for {len(hmtx_diffs)} glyph(s) "
+                            f"(e.g. {hmtx_diffs[:5]})",
+                        )
+                    )
 
         if "vmtx" in src_font:
             if "vmtx" not in dst_font:

@@ -61,54 +61,96 @@ def cff_to_glyf(
         tt_glyphs: dict[str, TTGlyph] = {}
         actual_max_err = float(max_err)
 
+        def _empty_glyph() -> TTGlyph:
+            g = TTGlyph()
+            g.numberOfContours = 0
+            g.xMin = g.yMin = g.xMax = g.yMax = 0
+            g.flags = []
+            g.coordinates = []
+            g.endPtsOfContours = []
+            g.instructions = b""
+            return g
+
         for name in glyph_order:
             tt_pen = TTGlyphPen(glyph_set)
             cu_pen = Cu2QuPen(tt_pen, max_err, reverse_direction=reverse_direction)
             try:
                 glyph_set[name].draw(cu_pen)
-                tt_glyphs[name] = tt_pen.glyph()
+                glyph = tt_pen.glyph()
+                # Empty draws can yield an uninitialized glyph — normalize.
+                if getattr(glyph, "numberOfContours", None) in (0, None) and not getattr(
+                    glyph, "coordinates", None
+                ):
+                    glyph = _empty_glyph()
+                tt_glyphs[name] = glyph
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to convert glyph %s: %s — using empty glyph", name, exc)
-                tt_glyphs[name] = TTGlyph()
+                tt_glyphs[name] = _empty_glyph()
                 warnings.append(f"Glyph '{name}' failed Cu2Qu conversion: {exc}")
 
         # Build glyf + loca
         from fontTools.ttLib import newTable
 
         glyf = newTable("glyf")
-        glyf.glyphs = {}
-        glyf.glyphOrder = glyph_order
-        for name in glyph_order:
-            glyf.glyphs[name] = tt_glyphs[name]
-        # Ensure coordinates compiled
-        for name in glyph_order:
-            g = glyf.glyphs[name]
-            if hasattr(g, "draw"):
-                pass
+        glyf.glyphs = dict(tt_glyphs)
+        glyf.glyphOrder = list(glyph_order)
         font["glyf"] = glyf
+        for name in glyph_order:
+            try:
+                glyf[name].recalcBounds(glyf)
+            except Exception:  # noqa: BLE001
+                glyf[name] = _empty_glyph()
+
+        # Update hmtx LSB from new glyph bounds where possible.
+        if "hmtx" in font:
+            metrics = font["hmtx"].metrics
+            for name in glyph_order:
+                if name not in metrics:
+                    continue
+                width, _lsb = metrics[name]
+                g = glyf[name]
+                lsb = int(getattr(g, "xMin", 0) or 0)
+                metrics[name] = (width, lsb)
 
         # loca is rebuilt on save from glyf
         loca = newTable("loca")
         font["loca"] = loca
 
-        # maxp version 1.0 for TrueType
+        # maxp version 1.0 for TrueType — populate every required field.
+        max_points = 0
+        max_contours = 0
+        max_composite_points = 0
+        max_composite_contours = 0
+        max_component_elements = 0
+        max_component_depth = 0
+        for name in glyph_order:
+            g = glyf[name]
+            n_contours = getattr(g, "numberOfContours", 0) or 0
+            if n_contours > 0:
+                coords = getattr(g, "coordinates", None) or []
+                max_points = max(max_points, len(coords))
+                max_contours = max(max_contours, n_contours)
+            elif n_contours < 0:  # composite
+                comps = getattr(g, "components", None) or []
+                max_component_elements = max(max_component_elements, len(comps))
+                max_component_depth = max(max_component_depth, 1)
+
         maxp = font["maxp"]
         maxp.tableVersion = 0x00010000
         maxp.numGlyphs = len(glyph_order)
-        # Reset TT-specific fields; fontTools recalculates many on save.
-        for attr, val in (
-            ("maxZones", 2),
-            ("maxTwilightPoints", 0),
-            ("maxStorage", 0),
-            ("maxFunctionDefs", 0),
-            ("maxInstructionDefs", 0),
-            ("maxStackElements", 0),
-            ("maxSizeOfInstructions", 0),
-            ("maxComponentElements", 0),
-            ("maxComponentDepth", 0),
-        ):
-            if hasattr(maxp, attr):
-                setattr(maxp, attr, val)
+        maxp.maxPoints = max_points
+        maxp.maxContours = max_contours
+        maxp.maxCompositePoints = max_composite_points
+        maxp.maxCompositeContours = max_composite_contours
+        maxp.maxZones = 2
+        maxp.maxTwilightPoints = 0
+        maxp.maxStorage = 0
+        maxp.maxFunctionDefs = 0
+        maxp.maxInstructionDefs = 0
+        maxp.maxStackElements = 0
+        maxp.maxSizeOfInstructions = 0
+        maxp.maxComponentElements = max_component_elements
+        maxp.maxComponentDepth = max_component_depth
 
         # post format 2 preserves glyph names
         if "post" in font:
