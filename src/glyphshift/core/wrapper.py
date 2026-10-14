@@ -101,6 +101,7 @@ def wrap_font(
     target: Format,
     *,
     overwrite: bool = False,
+    preserve_flavor_data: bool = True,
 ) -> Path:
     """Convert only the container (flavor). Never subsets or drops tables.
 
@@ -114,6 +115,9 @@ def wrap_font(
         Desired Format (TTF/OTF keep flavor=None; WOFF/WOFF2 set flavor).
     overwrite:
         If False and dst exists, raise OutputExistsError.
+    preserve_flavor_data:
+        When True, keep WOFF/WOFF2 metadata and private data across wrapper
+        conversions when fontTools exposes ``flavorData``.
 
     Returns
     -------
@@ -144,7 +148,7 @@ def wrap_font(
         # When going woff -> woff (or woff2 -> woff2), keep flavorData.
         # When decompressing to sfnt, clear flavorData (not applicable).
         # When compressing, keep existing flavorData if any (woff metadata).
-        if flavor is None:
+        if flavor is None or not preserve_flavor_data:
             font.flavorData = None
         elif previous_flavor_data is not None and previous_flavor in ("woff", "woff2"):
             font.flavorData = previous_flavor_data

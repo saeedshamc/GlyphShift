@@ -79,6 +79,10 @@ class ConversionOptions:
     ttc_index: int | None = None
     instance: str | None = None
     recursive: bool = False
+    lossless_only: bool = False
+    preserve_flavor_data: bool = True
+    workers: int = 1
+    record_history: bool = True
 
 
 @dataclass

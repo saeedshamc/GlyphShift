@@ -121,6 +121,10 @@ def convert_file(
             verify_source = src
 
         # --- Optional instancing ---
+        if options.instance and options.lossless_only:
+            raise ConversionError(
+                "Lossless-only mode refuses --instance (collapsing axes is lossy)."
+            )
         if options.instance:
             inst_tmp = work_src.parent / f".{work_src.stem}.instance.tmp.ttf"
             work_src, inst_warns = instantiate_variable(
@@ -151,11 +155,28 @@ def convert_file(
         elif target == Format.OTF:
             need_outline = detected.outline == OutlineType.GLYF
 
+        if need_outline and options.lossless_only:
+            raise ConversionError(
+                "Lossless-only mode refuses outline conversion "
+                f"({detected.outline.value} -> {target.value}). "
+                "Use a wrapper target (woff/woff2) or disable lossless profile."
+            )
+
         if need_outline and detected.is_variable and not options.instance:
             raise ConversionError(
                 "Refusing outline conversion of a variable font without --instance. "
                 "Wrapper conversions (e.g. variable TTF -> WOFF2) preserve variation tables."
             )
+
+        # Pre-flight coverage advisories (Persian/Arabic).
+        try:
+            from glyphshift.core.coverage import coverage_warnings
+
+            for iss in coverage_warnings(verify_source or src):
+                if iss.severity.value in {"warning", "error"}:
+                    warnings.append(f"[coverage:{iss.code}] {iss.message}")
+        except Exception:  # noqa: BLE001
+            logger.debug("Coverage scan skipped", exc_info=True)
 
         outline_converted = False
         outline_direction: str | None = None
@@ -188,7 +209,13 @@ def convert_file(
                             temps.remove(mid)
                     final_path = out_path
                 else:
-                    final_path = wrap_font(mid, out_path, target, overwrite=True)
+                    final_path = wrap_font(
+                        mid,
+                        out_path,
+                        target,
+                        overwrite=True,
+                        preserve_flavor_data=options.preserve_flavor_data,
+                    )
             else:
                 mid = mid_dir / f".{out_path.stem}.glyf2cff.tmp.otf"
                 mid, ow = glyf_to_cff(work_src, mid, overwrite=True)
@@ -205,9 +232,21 @@ def convert_file(
                             temps.remove(mid)
                     final_path = out_path
                 else:
-                    final_path = wrap_font(mid, out_path, target, overwrite=True)
+                    final_path = wrap_font(
+                        mid,
+                        out_path,
+                        target,
+                        overwrite=True,
+                        preserve_flavor_data=options.preserve_flavor_data,
+                    )
         else:
-            final_path = wrap_font(work_src, out_path, target, overwrite=options.overwrite)
+            final_path = wrap_font(
+                work_src,
+                out_path,
+                target,
+                overwrite=options.overwrite,
+                preserve_flavor_data=options.preserve_flavor_data,
+            )
 
         verify_report: VerifyReport | None = None
         if options.verify and verify_source is not None:
