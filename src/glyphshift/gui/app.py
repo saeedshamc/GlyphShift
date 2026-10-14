@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QThreadPool
-from PySide6.QtGui import QAction, QGuiApplication
+from PySide6.QtGui import QAction, QColor, QGuiApplication, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,16 +28,21 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSlider,
     QSpinBox,
+    QTextEdit,
     QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
 from glyphshift import __version__
+from glyphshift.core.css import font_face_bundle
 from glyphshift.core.formats import Format, OutlineType, conversion_is_lossless, detect_format
 from glyphshift.core.info import inspect_font
 from glyphshift.core.models import ConversionOptions, ConversionResult
+from glyphshift.core.profiles import apply_profile
+from glyphshift.core.variable import format_instance_spec, list_axes
 from glyphshift.gui.i18n import Language, Strings, get_strings
 from glyphshift.gui.widgets import (
     CoveragePanel,
@@ -120,6 +125,18 @@ class MainWindow(QMainWindow):
         self.info_action = QAction("Info", self)
         self.info_action.triggered.connect(self._show_font_info)
         toolbar.addAction(self.info_action)
+        self.history_action = QAction("History", self)
+        self.history_action.triggered.connect(self._show_history)
+        toolbar.addAction(self.history_action)
+        toolbar.addSeparator()
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Auto", "auto")
+        self.theme_combo.addItem("Light", "light")
+        self.theme_combo.addItem("Dark", "dark")
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        self.theme_label = QLabel()
+        toolbar.addWidget(self.theme_label)
+        toolbar.addWidget(self.theme_combo)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -145,12 +162,21 @@ class MainWindow(QMainWindow):
         left.addWidget(self.file_list, stretch=1)
 
         form = QFormLayout()
+        self.profile_combo = QComboBox()
+        self.profile_combo.addItem("—", "")
+        self.profile_combo.addItem("web", "web")
+        self.profile_combo.addItem("desktop", "desktop")
+        self.profile_combo.addItem("lossless", "lossless")
+        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        form.addRow(QLabel(), self.profile_combo)
+        self.profile_label = form.itemAt(0, QFormLayout.ItemRole.LabelRole).widget()
+
         self.target_combo = QComboBox()
         for fmt in (Format.TTF, Format.OTF, Format.WOFF, Format.WOFF2):
             self.target_combo.addItem(fmt.value.upper(), fmt.value)
         self.target_combo.currentIndexChanged.connect(self._update_lossless_indicator)
         form.addRow(QLabel(), self.target_combo)
-        self.target_label = form.itemAt(0, QFormLayout.ItemRole.LabelRole).widget()
+        self.target_label = form.itemAt(1, QFormLayout.ItemRole.LabelRole).widget()
 
         out_row = QHBoxLayout()
         self.out_edit = QLineEdit()
@@ -160,12 +186,24 @@ class MainWindow(QMainWindow):
         out_row.addWidget(self.out_edit)
         out_row.addWidget(self.out_browse)
         form.addRow(QLabel(), out_row)
-        self.out_label = form.itemAt(1, QFormLayout.ItemRole.LabelRole).widget()
+        self.out_label = form.itemAt(2, QFormLayout.ItemRole.LabelRole).widget()
         left.addLayout(form)
 
         self.lossless_label = QLabel()
         self.lossless_label.setWordWrap(True)
         left.addWidget(self.lossless_label)
+
+        self.axes_box = QGroupBox()
+        axes_outer = QVBoxLayout(self.axes_box)
+        self.use_instance_cb = QCheckBox("Instantiate (lossy)")
+        self.use_instance_cb.setChecked(False)
+        axes_outer.addWidget(self.use_instance_cb)
+        self.axes_form = QWidget()
+        self.axes_layout = QFormLayout(self.axes_form)
+        axes_outer.addWidget(self.axes_form)
+        self._axis_sliders: dict[str, QSlider] = {}
+        self.axes_box.setVisible(False)
+        left.addWidget(self.axes_box)
 
         self.advanced = QGroupBox()
         self.advanced.setCheckable(True)
@@ -180,6 +218,11 @@ class MainWindow(QMainWindow):
         self.verify_cb = QCheckBox()
         self.verify_cb.setChecked(True)
         self.overwrite_cb = QCheckBox()
+        self.preserve_flavor_cb = QCheckBox()
+        self.preserve_flavor_cb.setChecked(True)
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, 16)
+        self.workers_spin.setValue(1)
         self.ttc_index = QSpinBox()
         self.ttc_index.setRange(-1, 64)
         self.ttc_index.setValue(-1)
@@ -188,9 +231,12 @@ class MainWindow(QMainWindow):
         adv_form.addRow(self.reverse_dir)
         adv_form.addRow(self.verify_cb)
         adv_form.addRow(self.overwrite_cb)
+        adv_form.addRow(self.preserve_flavor_cb)
+        adv_form.addRow(QLabel("workers"), self.workers_spin)
         adv_form.addRow(QLabel("ttc"), self.ttc_index)
         self._adv_max_err_label = adv_form.itemAt(0, QFormLayout.ItemRole.LabelRole).widget()
-        self._adv_ttc_label = adv_form.itemAt(4, QFormLayout.ItemRole.LabelRole).widget()
+        self._adv_workers_label = adv_form.itemAt(5, QFormLayout.ItemRole.LabelRole).widget()
+        self._adv_ttc_label = adv_form.itemAt(6, QFormLayout.ItemRole.LabelRole).widget()
         left.addWidget(self.advanced)
 
         action_row = QHBoxLayout()
@@ -233,20 +279,26 @@ class MainWindow(QMainWindow):
         self.drop.apply_strings(s)
         self.add_btn.setText(s.add_files)
         self.clear_btn.setText(s.clear_list)
+        self.profile_label.setText(s.profile)
         self.target_label.setText(s.target_format)
         self.out_label.setText(s.output_dir)
         self.out_edit.setPlaceholderText(s.same_as_source)
         self.out_browse.setText(s.browse)
         self.advanced.setTitle(s.advanced)
+        self.axes_box.setTitle(s.axes)
         self._adv_max_err_label.setText(s.max_err)
         self.reverse_dir.setText(s.reverse_direction)
         self.verify_cb.setText(s.verify)
         self.overwrite_cb.setText(s.overwrite)
+        self.preserve_flavor_cb.setText(s.preserve_flavor)
+        self._adv_workers_label.setText(s.workers)
         self._adv_ttc_label.setText(s.ttc_index)
         self.convert_btn.setText(s.convert)
         self.cancel_btn.setText(s.cancel)
         self.lang_label.setText(s.language_label)
+        self.theme_label.setText(s.theme)
         self.info_action.setText(s.font_info)
+        self.history_action.setText(s.history)
         self.preview.apply_strings(s)
         self.report.apply_strings(s)
         self.status_label.setText(s.status_ready)
@@ -270,19 +322,36 @@ class MainWindow(QMainWindow):
         idx = self.target_combo.findData(target)
         if idx >= 0:
             self.target_combo.setCurrentIndex(idx)
+        profile = str(self.settings.value("profile", ""))
+        pidx = self.profile_combo.findData(profile)
+        if pidx >= 0:
+            self.profile_combo.setCurrentIndex(pidx)
         self.max_err.setValue(float(self.settings.value("max_err", 1.0)))
         self.verify_cb.setChecked(self.settings.value("verify", True, type=bool))
         self.overwrite_cb.setChecked(self.settings.value("overwrite", False, type=bool))
         self.reverse_dir.setChecked(self.settings.value("reverse_direction", True, type=bool))
+        self.preserve_flavor_cb.setChecked(
+            self.settings.value("preserve_flavor", True, type=bool)
+        )
+        self.workers_spin.setValue(int(self.settings.value("workers", 1)))
+        theme = str(self.settings.value("theme", "auto"))
+        tidx = self.theme_combo.findData(theme)
+        if tidx >= 0:
+            self.theme_combo.setCurrentIndex(tidx)
+        self._apply_theme(theme)
 
     def _save_settings(self) -> None:
         self.settings.setValue("out_dir", self.out_edit.text())
         self.settings.setValue("target", self.target_combo.currentData())
+        self.settings.setValue("profile", self.profile_combo.currentData())
         self.settings.setValue("max_err", self.max_err.value())
         self.settings.setValue("verify", self.verify_cb.isChecked())
         self.settings.setValue("overwrite", self.overwrite_cb.isChecked())
         self.settings.setValue("reverse_direction", self.reverse_dir.isChecked())
+        self.settings.setValue("preserve_flavor", self.preserve_flavor_cb.isChecked())
+        self.settings.setValue("workers", self.workers_spin.value())
         self.settings.setValue("language", self.lang_combo.currentData())
+        self.settings.setValue("theme", self.theme_combo.currentData())
 
     def closeEvent(self, event) -> None:
         self._save_settings()
@@ -342,6 +411,7 @@ class MainWindow(QMainWindow):
         p = path if isinstance(path, Path) else None
         self.preview.load_source(p)
         self.coverage.show_path(p, self.strings.coverage)
+        self._rebuild_axis_sliders(p)
         # If we have a matching result, show converted preview
         if p is not None:
             for r in self._results:
@@ -350,16 +420,94 @@ class MainWindow(QMainWindow):
                     self.report.show_result(r, self.strings)
                     return
 
+    def _rebuild_axis_sliders(self, path: Path | None) -> None:
+        while self.axes_layout.rowCount():
+            self.axes_layout.removeRow(0)
+        self._axis_sliders.clear()
+        if path is None:
+            self.axes_box.setVisible(False)
+            return
+        try:
+            axes = list_axes(path)
+        except Exception:
+            axes = []
+        if not axes:
+            self.axes_box.setVisible(False)
+            return
+        self.axes_box.setVisible(True)
+        for axis in axes:
+            slider = QSlider(Qt.Orientation.Horizontal)
+            lo = int(axis["min"])
+            hi = int(axis["max"])
+            default = int(axis["default"])
+            slider.setMinimum(lo)
+            slider.setMaximum(max(hi, lo + 1))
+            slider.setValue(default)
+            slider.setToolTip(f"{axis['tag']}: {lo}…{hi}")
+            self.axes_layout.addRow(QLabel(axis["tag"]), slider)
+            self._axis_sliders[axis["tag"]] = slider
+
+    def _on_profile_changed(self) -> None:
+        profile = self.profile_combo.currentData()
+        if not profile:
+            self._update_lossless_indicator()
+            return
+        fmt, _opts = apply_profile(str(profile), target=self._current_target())
+        idx = self.target_combo.findData(fmt.value)
+        if idx >= 0:
+            self.target_combo.blockSignals(True)
+            self.target_combo.setCurrentIndex(idx)
+            self.target_combo.blockSignals(False)
+        self._update_lossless_indicator()
+
+    def _on_theme_changed(self) -> None:
+        theme = str(self.theme_combo.currentData())
+        self.settings.setValue("theme", theme)
+        self._apply_theme(theme)
+
+    def _apply_theme(self, theme: str) -> None:
+        app = QApplication.instance()
+        if app is None:
+            return
+        if theme == "dark":
+            palette = QPalette()
+            palette.setColor(QPalette.ColorRole.Window, QColor(45, 45, 45))
+            palette.setColor(QPalette.ColorRole.WindowText, QColor(220, 220, 220))
+            palette.setColor(QPalette.ColorRole.Base, QColor(30, 30, 30))
+            palette.setColor(QPalette.ColorRole.Text, QColor(220, 220, 220))
+            palette.setColor(QPalette.ColorRole.Button, QColor(55, 55, 55))
+            palette.setColor(QPalette.ColorRole.ButtonText, QColor(220, 220, 220))
+            app.setPalette(palette)
+        elif theme == "light":
+            app.setPalette(app.style().standardPalette())  # type: ignore[union-attr]
+        else:
+            # Auto: restore style default (OS-influenced where available)
+            app.setPalette(app.style().standardPalette())  # type: ignore[union-attr]
+
     def _options(self) -> ConversionOptions:
         idx = self.ttc_index.value()
-        return ConversionOptions(
+        instance = None
+        if self._axis_sliders:
+            coords = {tag: float(sl.value()) for tag, sl in self._axis_sliders.items()}
+            instance = format_instance_spec(coords)
+        if not self.use_instance_cb.isChecked():
+            instance = None
+        opts = ConversionOptions(
             max_err=self.max_err.value(),
             reverse_direction=self.reverse_dir.isChecked(),
             overwrite=self.overwrite_cb.isChecked(),
             verify=self.verify_cb.isChecked(),
             keep_on_fail=False,
             ttc_index=None if idx < 0 else idx,
+            instance=instance,
+            workers=self.workers_spin.value(),
+            preserve_flavor_data=self.preserve_flavor_cb.isChecked(),
+            record_history=True,
         )
+        profile = self.profile_combo.currentData()
+        if profile:
+            _fmt, opts = apply_profile(str(profile), opts, target=self._current_target())
+        return opts
 
     def _start_convert(self) -> None:
         paths = self.file_list.paths()
@@ -427,21 +575,11 @@ class MainWindow(QMainWindow):
         if not result or not result.output_path:
             return
         path = result.output_path
-        fmt = path.suffix.lstrip(".").lower()
-        family = path.stem
         try:
-            info = inspect_font(path)
-            if info.family:
-                family = info.family
-        except Exception:
-            pass
-        css = (
-            "@font-face {\n"
-            f"  font-family: '{family}';\n"
-            f"  src: url('{path.name}') format('{fmt}');\n"
-            "  font-display: swap;\n"
-            "}\n"
-        )
+            css = font_face_bundle(path)
+        except Exception as exc:
+            QMessageBox.critical(self, self.strings.error_title, str(exc))
+            return
         QGuiApplication.clipboard().setText(css)
         self.status_label.setText(self.strings.copied)
 
@@ -459,6 +597,42 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             logger.exception("Font info failed")
             QMessageBox.critical(self, self.strings.error_title, str(exc))
+
+    def _show_history(self) -> None:
+        from glyphshift.core.history import list_history, undo_entry
+
+        entries = list_history(limit=30)
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle(self.strings.history)
+        if not entries:
+            dlg.setText("No history.")
+            dlg.exec()
+            return
+        lines = [
+            f"{e.id[:8]}  {'OK' if e.success else 'FAIL'}  {e.input_path} → {e.output_path or '-'}"
+            for e in entries
+        ]
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText("\n".join(lines))
+        box = QMessageBox(self)
+        box.setWindowTitle(self.strings.history)
+        box.setText(self.strings.history)
+        box.setInformativeText("Latest conversions (undo via CLI: glyphshift history --undo ID)")
+        layout = box.layout()
+        if layout is not None:
+            layout.addWidget(text, 1, 0, 1, layout.columnCount())
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Abort
+        )
+        box.button(QMessageBox.StandardButton.Abort).setText("Undo latest")
+        result = box.exec()
+        if result == QMessageBox.StandardButton.Abort and entries:
+            try:
+                undo_entry(entries[0].id, delete_output=True)
+                self.status_label.setText(f"Undone {entries[0].id[:8]}")
+            except Exception as exc:
+                QMessageBox.critical(self, self.strings.error_title, str(exc))
 
 
 def main() -> int:

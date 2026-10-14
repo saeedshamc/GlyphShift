@@ -59,6 +59,13 @@ class Strings:
     verification_passed: str
     verification_failed: str
     issues: str
+    profile: str
+    theme: str
+    history: str
+    workers: str
+    preserve_flavor: str
+    axes: str
+    compare: str
 
 
 _EN = Strings(
@@ -112,6 +119,13 @@ _EN = Strings(
     verification_passed="Verification passed",
     verification_failed="Verification failed",
     issues="Issues",
+    profile="Profile",
+    theme="Theme",
+    history="History",
+    workers="Parallel workers",
+    preserve_flavor="Preserve WOFF metadata",
+    axes="Variable axes",
+    compare="Compare",
 )
 
 _FA = Strings(
@@ -165,6 +179,13 @@ _FA = Strings(
     verification_passed="اعتبارسنجی موفق",
     verification_failed="اعتبارسنجی ناموفق",
     issues="مسائل",
+    profile="پروفایل",
+    theme="پوسته",
+    history="تاریخچه",
+    workers="کارگر موازی",
+    preserve_flavor="حفظ متادیتای WOFF",
+    axes="محورهای متغیر",
+    compare="مقایسه",
 )
 
 
